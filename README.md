@@ -4,4 +4,5 @@ An implementation of iLQR for trajectory synthesis and control. Use finite diffe
 Dependencies:
 
 Numpy
+
 Matplotlib
