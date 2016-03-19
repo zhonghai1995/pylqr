@@ -9,6 +9,7 @@ class PyLQR_TrajCtrl():
     """
     Use second-order system and acceleration as system and input
     The trajectory is given as a set of reference waypoints and associated tracking weights
+    or general cost function (use finite difference to have gradient & hessian)
     """
     def __init__(self, R=.01, dt=0.01):
         #control penalty, smoothness of the trajectory
@@ -31,7 +32,29 @@ class PyLQR_TrajCtrl():
         self.ilqr_ = None
         return
 
-    def build_ilqr_solver(self, ref_pnts, weight_mats):
+    def build_ilqr_general_solver(self, cost_func, n_dims=2, T=100):
+        #figure out dimension
+        self.T_ = T
+        self.n_dims_ = n_dims
+
+        #build dynamics, second-order linear dynamical system
+        self.A_ = np.eye(self.n_dims_*2)
+        self.A_[0:self.n_dims_, self.n_dims_:] = np.eye(self.n_dims_) * self.dt_
+        self.B_ = np.zeros((self.n_dims_*2, self.n_dims_))
+        self.B_[self.n_dims_:, :] = np.eye(self.n_dims_) * self.dt_
+
+        self.plant_dyn_ = lambda x, u, t, aux: self.A_.dot(x) + self.B_.dot(u)
+        self.plant_dyn_dx_ = lambda x, u, t, aux: self.A_
+        self.plant_dyn_du_ = lambda x, u, t, aux: self.B_
+
+        self.cost_ = cost_func
+
+        #build an iLQR solver based on given functions...
+        self.ilqr_ = pylqr.PyLQR_iLQRSolver(T=self.T_-1, plant_dyn=self.plant_dyn_, cost=self.cost_)
+
+        return
+
+    def build_ilqr_tracking_solver(self, ref_pnts, weight_mats):
         #figure out dimension
         self.T_ = len(ref_pnts)
         self.n_dims_ = len(ref_pnts[0])
@@ -99,13 +122,16 @@ class PyLQR_TrajCtrl():
 
         return
 
-    def synthesize_trajectory(self, x0):
+    def synthesize_trajectory(self, x0, u_array=None):
         if self.ilqr_ is None:
             print 'No iLQR solver has been prepared.'
             return None
 
         #initialization doesn't matter as global optimality can be guaranteed?
-        u_init = [np.zeros(self.n_dims_) for i in range(self.T_-1)]
+        if u_array is None:
+            u_init = [np.zeros(self.n_dims_) for i in range(self.T_-1)]
+        else:
+            u_init = u_array
         x_init = np.concatenate([x0, np.zeros(self.n_dims_)])
         res = self.ilqr_.ilqr_iterate(x_init, u_init, n_itrs=50, tol=1e-6, verbose=True)
         return res['x_array_opt'][:, 0:self.n_dims_]
@@ -115,7 +141,7 @@ Test case, 2D trajectory to track a sinuoidal..
 """
 import matplotlib.pyplot as plt
 
-def PyLQR_TrajCtrl_Test():
+def PyLQR_TrajCtrl_TrackingTest():
     n_pnts = 200
     x_coord = np.linspace(0.0, 2*np.pi, n_pnts)
     y_coord = np.sin(x_coord)
@@ -131,7 +157,7 @@ def PyLQR_TrajCtrl_Test():
     ax.plot([ref_traj[0, 0]], [ref_traj[0, 1]], '*k', markersize=16)
 
     lqr_traj_ctrl = PyLQR_TrajCtrl()
-    lqr_traj_ctrl.build_ilqr_solver(ref_traj, weight_mats)
+    lqr_traj_ctrl.build_ilqr_tracking_solver(ref_traj, weight_mats)
 
     n_queries = 5
 
@@ -145,5 +171,59 @@ def PyLQR_TrajCtrl_Test():
     plt.show()
     return
 
+def PyLQR_TrajCtrl_GeneralTest():
+    #build RBF basis
+    rbf_basis = np.array([
+        [-1.0, -1.0],
+        [-1.0, 1.0],
+        [1.0, -1.0],
+        [1.0, 1.0]
+        ])
+    gamma = 1
+    T = 100
+    R = 1e-5
+    # rbf_funcs = [lambda x, u, t, aux: np.exp(-gamma*np.linalg.norm(x[0:2]-basis)**2) + .01*np.linalg.norm(u)**2 for basis in rbf_basis]
+    rbf_funcs = [
+    lambda x, u, t, aux: -np.exp(-gamma*np.linalg.norm(x[0:2]-rbf_basis[0])**2) + R*np.linalg.norm(u)**2,
+    lambda x, u, t, aux: -np.exp(-gamma*np.linalg.norm(x[0:2]-rbf_basis[1])**2) + R*np.linalg.norm(u)**2,
+    lambda x, u, t, aux: -np.exp(-gamma*np.linalg.norm(x[0:2]-rbf_basis[2])**2) + R*np.linalg.norm(u)**2,
+    lambda x, u, t, aux: -np.exp(-gamma*np.linalg.norm(x[0:2]-rbf_basis[3])**2) + R*np.linalg.norm(u)**2
+    ]
+
+    weights = np.array([.75, .5, .25, 1.])
+    weights = weights / np.sum(weights)
+
+    cost_func = lambda x, u, t, aux: np.sum(weights * np.array([basis_func(x, u, t, aux) for basis_func in rbf_funcs]))
+
+    lqr_traj_ctrl = PyLQR_TrajCtrl()
+    lqr_traj_ctrl.build_ilqr_general_solver(cost_func, n_dims=rbf_basis.shape[1], T=T)
+
+    n_eval_pnts = 50
+    coords = np.linspace(-2.5, 2.5, n_eval_pnts)
+    xv, yv = np.meshgrid(coords, coords)
+
+    z = [[cost_func(np.array([xv[i, j], yv[i, j]]), np.zeros(2), None, None) for j in range(yv.shape[1])] for i in range(len(xv))]
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.hold(True)
+    ax.contour(xv, yv, z)
+    
+    n_queries = 5
+    u_array = np.random.rand(2, T-1).T * 2 - 1
+    
+    for i in range(n_queries):
+        #start from a perturbed point
+        x0 = np.random.rand(2) * 4 - 2
+        syn_traj = lqr_traj_ctrl.synthesize_trajectory(x0, u_array)
+        #plot it
+        ax.plot([x0[0]], [x0[1]], 'k*', markersize=12.0)
+        ax.plot(syn_traj[:, 0], syn_traj[:, 1], linewidth=3.5)
+
+    plt.show()
+
+    return
+
 if __name__ == '__main__':
-    PyLQR_TrajCtrl_Test()
+    # PyLQR_TrajCtrl_TrackingTest()
+    PyLQR_TrajCtrl_GeneralTest()

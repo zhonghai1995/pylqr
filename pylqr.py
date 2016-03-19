@@ -86,9 +86,10 @@ class PyLQR_iLQRSolver:
                 x_array_new, u_array_new = self.apply_control(x_array, u_array, k_array, K_array, alpha)
                 #evaluate the cost of this trial
                 J_new = self.evaluate_trajectory_cost(x_array_new, u_array_new)
+
                 if J_new < J_opt:
                     #see if it is converged
-                    if (J_opt - J_new )/J_opt < tol:
+                    if np.abs((J_opt - J_new )/J_opt) < tol:
                         #replacement for the next iteration
                         J_opt = J_new
                         x_array = x_array_new
@@ -129,11 +130,11 @@ class PyLQR_iLQRSolver:
 
         #prepare result dictionary
         res_dict = {
-        'J_hist':J_hist,
-        'x_array_opt':x_array,
-        'u_array_opt':u_array,
-        'k_array_opt':k_array,
-        'K_array_opt':K_array
+        'J_hist':np.array(J_hist),
+        'x_array_opt':np.array(x_array),
+        'u_array_opt':np.array(u_array),
+        'k_array_opt':np.array(k_array),
+        'K_array_opt':np.array(K_array)
         }
 
         return res_dict
