@@ -107,7 +107,10 @@ class PyLQR_iLQRSolver:
                         accept = True
                         print 'Iteration {0}:\tJ = {1};\tnorm_k = {2};\treg = {3}'.format(i+1, J_opt, norm_k, np.log10(self.reg))
                         break
-
+                else:
+                    #don't accept this
+                    accept = False
+            
             J_hist.append(J_opt)
 
             #exit if converged...

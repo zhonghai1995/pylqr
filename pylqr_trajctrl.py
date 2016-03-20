@@ -122,7 +122,7 @@ class PyLQR_TrajCtrl():
 
         return
 
-    def synthesize_trajectory(self, x0, u_array=None):
+    def synthesize_trajectory(self, x0, u_array=None, n_itrs=50, tol=1e-6, verbose=True):
         if self.ilqr_ is None:
             print 'No iLQR solver has been prepared.'
             return None
@@ -133,7 +133,7 @@ class PyLQR_TrajCtrl():
         else:
             u_init = u_array
         x_init = np.concatenate([x0, np.zeros(self.n_dims_)])
-        res = self.ilqr_.ilqr_iterate(x_init, u_init, n_itrs=50, tol=1e-6, verbose=True)
+        res = self.ilqr_.ilqr_iterate(x_init, u_init, n_itrs=n_itrs, tol=tol, verbose=verbose)
         return res['x_array_opt'][:, 0:self.n_dims_]
 
 """
