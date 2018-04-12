@@ -1,11 +1,20 @@
-import numpy as np
+try:
+    import autograd.numpy as np
+    from autograd import grad, jacobian
+    has_autograd = True
+except ImportError:
+    import numpy as np
+    has_autograd = False
+
+# import numpy as np
+# has_autograd = False
 
 class PyLQR_iLQRSolver:
     """
     Discrete time finite horizon iLQR solver
     """
 
-    def __init__(self, T, plant_dyn, cost, constraints=None):
+    def __init__(self, T, plant_dyn, cost, constraints=None, use_autograd=True):
         """
         T:              Length of horizon
         plant_dyn:      Discrete time plant dynamics, can be nonlinear
@@ -21,12 +30,13 @@ class PyLQR_iLQRSolver:
         self.constraints = constraints
         #auxiliary arguments for function evaluations; particularly useful for cost evaluation
         self.aux = None
+        self.use_autograd = has_autograd and use_autograd
 
         """
         Gradient of dynamics and costs with respect to state/control
         Default is none so finite difference/automatic differentiation will be used
         Otherwise the given functions should be again the functions accept (x, u, t, aux)
-        Constraints should mean self.constraints(x, u, t, aux) >= 0
+        Constraints should mean self.constraints(x, u, t, aux) <= 0
         """
         self.plant_dyn_dx = None        #Df/Dx
         self.plant_dyn_du = None        #Df/Du
@@ -54,6 +64,25 @@ class PyLQR_iLQRSolver:
         self.reg_max = 1000
         self.reg_min = 1e-6
         self.reg_factor = 10
+
+        if self.use_autograd:
+            #generate gradients and hessians using autograd
+            #note in this case, the plant_dyn, cost and constraints must be specified with the autograd numpy
+            self.plant_dyn_dx = jacobian(self.plant_dyn, 0)  #with respect the first argument   x
+            self.plant_dyn_du = jacobian(self.plant_dyn, 1)  #with respect to the second argument   u
+
+            self.cost_dx = grad(self.cost, 0)
+            self.cost_du = grad(self.cost, 1)
+            self.cost_dxx = jacobian(self.cost_dx, 0)
+            self.cost_duu = jacobian(self.cost_du, 1)
+            self.cost_dux = jacobian(self.cost_du, 0)
+
+            if constraints is not None:
+                self.constraints_dx = jacobian(self.constraints, 0)
+                self.constraints_du = jacobian(self.constraints, 1)
+                self.constraints_dxx = jacobian(self.constraints_dx, 0)
+                self.constraints_duu = jacobian(self.constraints_du, 1)
+                self.constraints_dux = jacobian(self.constraints_du, 0)
         return
 
     def evaluate_trajectory_cost(self, x_array, u_array):

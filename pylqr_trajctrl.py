@@ -1,7 +1,10 @@
 """
 LQR based trajectory controller
 """
-import numpy as np
+try:
+    import autograd.numpy as np
+except ImportError:
+    import numpy as np
 
 import pylqr
 
@@ -11,7 +14,7 @@ class PyLQR_TrajCtrl():
     The trajectory is given as a set of reference waypoints and associated tracking weights
     or general cost function (use finite difference to have gradient & hessian)
     """
-    def __init__(self, R=.01, dt=0.01):
+    def __init__(self, R=.01, dt=0.01, use_autograd=False):
         #control penalty, smoothness of the trajectory
         self.R_ = R
         self.dt_ = dt
@@ -30,6 +33,8 @@ class PyLQR_TrajCtrl():
         self.cost_dux_ = None
 
         self.ilqr_ = None
+
+        self.use_autograd=use_autograd
         return
 
     def build_ilqr_general_solver(self, cost_func, n_dims=2, T=100):
@@ -43,14 +48,14 @@ class PyLQR_TrajCtrl():
         self.B_ = np.zeros((self.n_dims_*2, self.n_dims_))
         self.B_[self.n_dims_:, :] = np.eye(self.n_dims_) * self.dt_
 
-        self.plant_dyn_ = lambda x, u, t, aux: self.A_.dot(x) + self.B_.dot(u)
+        self.plant_dyn_ = lambda x, u, t, aux: np.dot(self.A_, x) + np.dot(self.B_, u)
         self.plant_dyn_dx_ = lambda x, u, t, aux: self.A_
         self.plant_dyn_du_ = lambda x, u, t, aux: self.B_
 
         self.cost_ = cost_func
 
         #build an iLQR solver based on given functions...
-        self.ilqr_ = pylqr.PyLQR_iLQRSolver(T=self.T_-1, plant_dyn=self.plant_dyn_, cost=self.cost_)
+        self.ilqr_ = pylqr.PyLQR_iLQRSolver(T=self.T_-1, plant_dyn=self.plant_dyn_, cost=self.cost_, use_autograd=self.use_autograd)
 
         return
 
@@ -71,54 +76,57 @@ class PyLQR_TrajCtrl():
         self.B_ = np.zeros((self.n_dims_*2, self.n_dims_))
         self.B_[self.n_dims_:, :] = np.eye(self.n_dims_) * self.dt_
 
-        self.plant_dyn_ = lambda x, u, t, aux: self.A_.dot(x) + self.B_.dot(u)
-        self.plant_dyn_dx_ = lambda x, u, t, aux: self.A_
-        self.plant_dyn_du_ = lambda x, u, t, aux: self.B_
+        self.plant_dyn_ = lambda x, u, t, aux: np.dot(self.A_, x) + np.dot(self.B_, u)
 
         #build cost functions, quadratic ones
         def tmp_cost_func(x, u, t, aux):
             err = x[0:self.n_dims_] - self.ref_array[t]
-            cost = (err).dot(self.weight_array[t]).dot(err) + np.linalg.norm(u)**2 * self.R_
+            #autograd does not allow A.dot(B)
+            cost = np.dot(np.dot(err, self.weight_array[t]), err) + np.sum(u**2) * self.R_
             if t > self.T_-1:
                 #regularize velocity for the termination point
-                cost += np.linalg.norm(x[self.n_dims_:])**2  * self.R_ * self.Q_vel_ratio_
+                #autograd does not allow self increment
+                cost = cost + np.sum(x[self.n_dims_:]**2)  * self.R_ * self.Q_vel_ratio_
             return cost
         
         self.cost_ = tmp_cost_func
+        self.ilqr_ = pylqr.PyLQR_iLQRSolver(T=self.T_-1, plant_dyn=self.plant_dyn_, cost=self.cost_, use_autograd=self.use_autograd)
+        if not self.use_autograd:
+            self.plant_dyn_dx_ = lambda x, u, t, aux: self.A_
+            self.plant_dyn_du_ = lambda x, u, t, aux: self.B_
+            
+            def tmp_cost_func_dx(x, u, t, aux):
+                err = x[0:self.n_dims_] - self.ref_array[t]
+                grad = np.concatenate([2*err.dot(self.weight_array[t]), np.zeros(self.n_dims_)])
+                if t > self.T_-1:
+                    grad[self.n_dims_:] = grad[self.n_dims_:] + 2 * self.R_ * self.Q_vel_ratio_ * x[self.n_dims_, :]
+                return grad
 
-        def tmp_cost_func_dx(x, u, t, aux):
-            err = x[0:self.n_dims_] - self.ref_array[t]
-            grad = np.concatenate([2*err.dot(self.weight_array[t]), np.zeros(self.n_dims_)])
-            if t > self.T_-1:
-                grad[self.n_dims_:] = grad[self.n_dims_:] + 2 * self.R_ * self.Q_vel_ratio_ * x[self.n_dims_, :]
-            return grad
+            self.cost_dx_ = tmp_cost_func_dx
 
-        self.cost_dx_ = tmp_cost_func_dx
+            self.cost_du_ = lambda x, u, t, aux: 2 * self.R_ * u
 
-        self.cost_du_ = lambda x, u, t, aux: 2 * self.R_ * u
+            def tmp_cost_func_dxx(x, u, t, aux):
+                hessian = np.zeros((2*self.n_dims_, 2*self.n_dims_))
+                hessian[0:self.n_dims_, 0:self.n_dims_] = 2 * self.weight_array[t]
 
-        def tmp_cost_func_dxx(x, u, t, aux):
-            hessian = np.zeros((2*self.n_dims_, 2*self.n_dims_))
-            hessian[0:self.n_dims_, 0:self.n_dims_] = 2 * self.weight_array[t]
+                if t > self.T_-1:
+                    hessian[self.n_dims_:, self.n_dims_:] = 2 * np.eye(self.n_dims_) * self.R_ * self.Q_vel_ratio_
+                return hessian
 
-            if t > self.T_-1:
-                hessian[self.n_dims_:, self.n_dims_:] = 2 * np.eye(self.n_dims_) * self.R_ * self.Q_vel_ratio_
-            return hessian
+            self.cost_dxx_ = tmp_cost_func_dxx
 
-        self.cost_dxx_ = tmp_cost_func_dxx
+            self.cost_duu_ = lambda x, u, t, aux: 2 * self.R_ * np.eye(self.n_dims_)
+            self.cost_dux_ = lambda x, u, t, aux: np.zeros((self.n_dims_, 2*self.n_dims_))
 
-        self.cost_duu_ = lambda x, u, t, aux: 2 * self.R_ * np.eye(self.n_dims_)
-        self.cost_dux_ = lambda x, u, t, aux: np.zeros((self.n_dims_, 2*self.n_dims_))
-
-        #build an iLQR solver based on given functions...
-        self.ilqr_ = pylqr.PyLQR_iLQRSolver(T=self.T_-1, plant_dyn=self.plant_dyn_, cost=self.cost_)
-        self.ilqr_.plant_dyn_dx = self.plant_dyn_dx_
-        self.ilqr_.plant_dyn_du = self.plant_dyn_du_
-        self.ilqr_.cost_dx = self.cost_dx_
-        self.ilqr_.cost_du = self.cost_du_
-        self.ilqr_.cost_dxx = self.cost_dxx_
-        self.ilqr_.cost_duu = self.cost_duu_
-        self.ilqr_.cost_dux = self.cost_dux_
+            #build an iLQR solver based on given functions...
+            self.ilqr_.plant_dyn_dx = self.plant_dyn_dx_
+            self.ilqr_.plant_dyn_du = self.plant_dyn_du_
+            self.ilqr_.cost_dx = self.cost_dx_
+            self.ilqr_.cost_du = self.cost_du_
+            self.ilqr_.cost_dxx = self.cost_dxx_
+            self.ilqr_.cost_duu = self.cost_duu_
+            self.ilqr_.cost_dux = self.cost_dux_
 
         return
 
@@ -156,7 +164,7 @@ def PyLQR_TrajCtrl_TrackingTest():
     ax.plot(ref_traj[:, 0], ref_traj[:, 1], '.-k', linewidth=3.5)
     ax.plot([ref_traj[0, 0]], [ref_traj[0, 1]], '*k', markersize=16)
 
-    lqr_traj_ctrl = PyLQR_TrajCtrl()
+    lqr_traj_ctrl = PyLQR_TrajCtrl(use_autograd=True)
     lqr_traj_ctrl.build_ilqr_tracking_solver(ref_traj, weight_mats)
 
     n_queries = 5
@@ -191,11 +199,11 @@ def PyLQR_TrajCtrl_GeneralTest():
     ]
 
     weights = np.array([.75, .5, .25, 1.])
-    weights = weights / np.sum(weights)
+    weights = weights / (np.sum(weights) + 1e-6)
 
     cost_func = lambda x, u, t, aux: np.sum(weights * np.array([basis_func(x, u, t, aux) for basis_func in rbf_funcs]))
 
-    lqr_traj_ctrl = PyLQR_TrajCtrl()
+    lqr_traj_ctrl = PyLQR_TrajCtrl(use_autograd=True)
     lqr_traj_ctrl.build_ilqr_general_solver(cost_func, n_dims=rbf_basis.shape[1], T=T)
 
     n_eval_pnts = 50

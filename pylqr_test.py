@@ -1,7 +1,11 @@
 """
 A Inverted Pendulum test for the iLQR implementation
 """
-import numpy as np
+try:
+    import autograd.numpy as np
+except ImportError:
+    import numpy as np
+
 import matplotlib.pyplot as plt
 
 import pylqr
@@ -97,9 +101,10 @@ class InversePendulumProblem():
         else:
             return (x[0] - np.pi)**2 * self.Q + x[1]**2*self.Q_T + u[0]**2 * self.R
 
-    def build_ilqr_problem(self, use_fd=False):
-        self.ilqr = pylqr.PyLQR_iLQRSolver(T=self.T, plant_dyn=self.plant_dyn, cost=self.instaneous_cost)
-        if not use_fd:
+    #grad_types = ['user', 'autograd', 'fd']
+    def build_ilqr_problem(self, grad_type=0):
+        if grad_type==0:
+            self.ilqr = pylqr.PyLQR_iLQRSolver(T=self.T, plant_dyn=self.plant_dyn, cost=self.instaneous_cost, use_autograd=False)
             #not use finite difference, assign the gradient functions
             self.ilqr.plant_dyn_dx = self.plant_dyn_dx
             self.ilqr.plant_dyn_du = self.plant_dyn_du
@@ -108,13 +113,19 @@ class InversePendulumProblem():
             self.ilqr.cost_dxx = self.cost_dxx
             self.ilqr.cost_duu = self.cost_duu
             self.ilqr.cost_dux = self.cost_dux
-            
+        elif grad_type==1:
+            self.ilqr = pylqr.PyLQR_iLQRSolver(T=self.T, plant_dyn=self.plant_dyn, cost=self.instaneous_cost, use_autograd=True)
+        else:
+            #finite difference
+            self.ilqr = pylqr.PyLQR_iLQRSolver(T=self.T, plant_dyn=self.plant_dyn, cost=self.instaneous_cost, use_autograd=False)
         return
-    def solve_ilqr_problem(self):
+
+    def solve_ilqr_problem(self, x0=None):
         #prepare initial guess
         u_init = np.array([np.array([0]) for t in range(self.T)])
-        x0 = np.array([np.random.rand()*2*np.pi - np.pi, 0])
-        # x0 = np.array([np.pi - 1, 0])
+        if x0 is None:
+            x0 = np.array([np.random.rand()*2*np.pi - np.pi, 0])
+
         if self.ilqr is not None:
             self.res = self.ilqr.ilqr_iterate(x0, u_init, n_itrs=150, tol=1e-6)
         return
@@ -147,7 +158,17 @@ class InversePendulumProblem():
 
 if __name__ == '__main__':
     problem = InversePendulumProblem()
-    # problem.build_ilqr_problem(use_fd=True)
-    problem.build_ilqr_problem(use_fd=True)
-    problem.solve_ilqr_problem()
+    x0 = np.array([np.pi - 1, 0])
+    
+    problem.build_ilqr_problem(grad_type=0) #try real gradients/hessians
+    problem.solve_ilqr_problem(x0)
     problem.plot_ilqr_result()
+
+    problem.build_ilqr_problem(grad_type=1) #try autograd
+    problem.solve_ilqr_problem(x0)
+    problem.plot_ilqr_result()
+
+    problem.build_ilqr_problem(grad_type=2) #try finite difference
+    problem.solve_ilqr_problem(x0)
+    problem.plot_ilqr_result()
+
