@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 try:
     import autograd.numpy as np
     from autograd import grad, jacobian
@@ -134,7 +136,7 @@ class PyLQR_iLQRSolver:
                         #momentum like adaptive regularization
                         self.reg = np.max([self.reg_min, self.reg / self.reg_factor])
                         accept = True
-                        print 'Iteration {0}:\tJ = {1};\tnorm_k = {2};\treg = {3}'.format(i+1, J_opt, norm_k, np.log10(self.reg))
+                        print('Iteration {0}:\tJ = {1};\tnorm_k = {2};\treg = {3}'.format(i+1, J_opt, norm_k, np.log10(self.reg)))
                         break
                 else:
                     #don't accept this
@@ -144,7 +146,7 @@ class PyLQR_iLQRSolver:
 
             #exit if converged...
             if converged:
-                print 'Converged at iteration {0}; J = {1}; reg = {2}'.format(i+1, J_opt, self.reg)
+                print('Converged at iteration {0}; J = {1}; reg = {2}'.format(i+1, J_opt, self.reg))
                 break
 
             #see if all the trials are rejected
@@ -152,13 +154,12 @@ class PyLQR_iLQRSolver:
                 #need to increase regularization
                 #check if the regularization term is too large
                 if self.reg > self.reg_max:
-                    print 'Exceeds regularization limit at iteration {0}; terminate the iterations'.format(i+1)
+                    print('Exceeds regularization limit at iteration {0}; terminate the iterations'.format(i+1))
                     break
 
                 self.reg = self.reg * self.reg_factor
                 if verbose:
-                    print 'Reject the control perturbation. Increase the regularization term.'
-
+                    print('Reject the control perturbation. Increase the regularization term.')
 
         #prepare result dictionary
         res_dict = {
@@ -220,7 +221,7 @@ class PyLQR_iLQRSolver:
         Vx = lqr_sys['dldx'][-1]
 
         for t in reversed(range(self.T)):
-            #note the double check if we need the transpose or not
+            #note to double check if we need the transpose or not
             Qx = lqr_sys['dldx'][t] + lqr_sys['dfdx'][t].T.dot(Vx)
             Qu = lqr_sys['dldu'][t] + lqr_sys['dfdu'][t].T.dot(Vx)
             Qxx = lqr_sys['dldxx'][t] + lqr_sys['dfdx'][t].T.dot(Vxx).dot(lqr_sys['dfdx'][t])

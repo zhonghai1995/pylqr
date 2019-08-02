@@ -1,6 +1,8 @@
 """
 A Inverted Pendulum test for the iLQR implementation
 """
+from __future__ import print_function
+
 try:
     import autograd.numpy as np
 except ImportError:
@@ -9,6 +11,11 @@ except ImportError:
 import matplotlib.pyplot as plt
 
 import pylqr
+
+try:
+    import torch
+except ImportError:
+    print('Error in importing PyTorch package.')
 
 class InversePendulumProblem():
     def __init__(self):
@@ -147,8 +154,7 @@ class InversePendulumProblem():
             ax_phase.set_xlabel('theta (rad)', fontsize=20)
             ax_phase.set_ylabel('theta_dot (rad/s)', fontsize=20)
             ax_phase.set_title('Phase Plot', fontsize=20)
-            #draw the destination point
-            ax_phase.hold(True)
+
             ax_phase.plot([theta[-1]], [theta_dot[-1]], 'b*', markersize=16)
 
             plt.show()
