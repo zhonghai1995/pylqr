@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 try:
+    #note autograd should be replacable by jax in future
     import autograd.numpy as np
     from autograd import grad, jacobian
     has_autograd = True
