@@ -100,7 +100,6 @@ class PyLQR_iLQRSolver:
     def ilqr_iterate(self, x0, u_init, n_itrs=50, tol=1e-6, verbose=True):
         #initialize the regularization term
         self.reg = 1
-
         #derive the initial guess trajectory from the initial guess of u
         x_array = self.forward_propagation(x0, u_init)
         u_array = np.copy(u_init)
@@ -137,7 +136,8 @@ class PyLQR_iLQRSolver:
                         #momentum like adaptive regularization
                         self.reg = np.max([self.reg_min, self.reg / self.reg_factor])
                         accept = True
-                        print('Iteration {0}:\tJ = {1};\tnorm_k = {2};\treg = {3}'.format(i+1, J_opt, norm_k, np.log10(self.reg)))
+                        if verbose:
+                            print('Iteration {0}:\tJ = {1};\tnorm_k = {2};\treg = {3}'.format(i+1, J_opt, norm_k, np.log10(self.reg)))
                         break
                 else:
                     #don't accept this
@@ -147,7 +147,8 @@ class PyLQR_iLQRSolver:
 
             #exit if converged...
             if converged:
-                print('Converged at iteration {0}; J = {1}; reg = {2}'.format(i+1, J_opt, self.reg))
+                if verbose:
+                    print('Converged at iteration {0}; J = {1}; reg = {2}'.format(i+1, J_opt, self.reg))
                 break
 
             #see if all the trials are rejected
@@ -155,7 +156,8 @@ class PyLQR_iLQRSolver:
                 #need to increase regularization
                 #check if the regularization term is too large
                 if self.reg > self.reg_max:
-                    print('Exceeds regularization limit at iteration {0}; terminate the iterations'.format(i+1))
+                    if verbose:
+                        print('Exceeds regularization limit at iteration {0}; terminate the iterations'.format(i+1))
                     break
 
                 self.reg = self.reg * self.reg_factor
