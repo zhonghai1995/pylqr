@@ -41,8 +41,8 @@ class SimpleRNNModel(torch.nn.Module):
     def __init__(self, n_rnncell):
         super(SimpleRNNModel, self).__init__()
         self.gru = torch.nn.GRU(n_rnncell, n_rnncell, batch_first=True)
-        self.in_feat = torch.nn.Sequential(torch.nn.Linear(3, n_rnncell), torch.nn.ReLU())
-        self.out_feat = torch.nn.Linear(n_rnncell, 2)
+        self.in_feat = torch.nn.Sequential(torch.nn.Linear(3, n_rnncell), torch.nn.ReLU())  #3: x-2, u-1
+        self.out_feat = torch.nn.Linear(n_rnncell, 2)                                       #2: x-2
         self.n_rnncell = n_rnncell
         
         self.in_feat.apply(init_weights)
@@ -151,14 +151,14 @@ class InversePendulumProblemLearning():
         return
     
     def learn_nn_model(self, model='fnn'):
-        dataloader = DataLoader(self.dataset, batch_size=5, shuffle=True)
-        
         if model == 'fnn':
             n_epoches = 200
+            dataloader = DataLoader(self.dataset, batch_size=5, shuffle=True)
             optim = torch.optim.Adam(self.fnn_model.parameters(), lr=1e-2, weight_decay=0.02)
         else:
-            n_epoches = 500
-            optim = torch.optim.Adam(self.rnn_model.parameters(), lr=1e-2, weight_decay=0.0)
+            n_epoches = 1000
+            dataloader = DataLoader(self.dataset, batch_size=2, shuffle=True)
+            optim = torch.optim.Adam(self.rnn_model.parameters(), lr=5e-3, weight_decay=0.0)
 
         for e in range(n_epoches):
             avg_cost = []
