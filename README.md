@@ -8,3 +8,4 @@ Numpy
 Matplotlib (Only for the test)
 
 [autograd](https://github.com/HIPS/autograd) (Only for automatic differentiation)
+[pytorch](https://pytorch.org/) (Only for learning-based MPC test)
