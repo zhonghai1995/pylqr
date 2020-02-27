@@ -1,8 +1,9 @@
 """
 LQR based trajectory controller
 """
+from __future__ import print_function 
 try:
-    import autograd.numpy as np
+    import jax.numpy as np
 except ImportError:
     import numpy as np
 
@@ -132,7 +133,7 @@ class PyLQR_TrajCtrl():
 
     def synthesize_trajectory(self, x0, u_array=None, n_itrs=50, tol=1e-6, verbose=True):
         if self.ilqr_ is None:
-            print 'No iLQR solver has been prepared.'
+            print('No iLQR solver has been prepared.')
             return None
 
         #initialization doesn't matter as global optimality can be guaranteed?
@@ -169,7 +170,7 @@ def PyLQR_TrajCtrl_TrackingTest():
 
     n_queries = 5
 
-    for i in range(n_queries):
+    for _ in range(n_queries):
         #start from a perturbed point
         x0 = ref_traj[0, :] + np.random.rand(2) * 2 - 1
         syn_traj = lqr_traj_ctrl.synthesize_trajectory(x0)
@@ -214,7 +215,7 @@ def PyLQR_TrajCtrl_GeneralTest():
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    ax.hold(True)
+
     ax.contour(xv, yv, z)
     
     n_queries = 5

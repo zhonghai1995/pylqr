@@ -2,8 +2,9 @@ from __future__ import print_function
 
 try:
     #note autograd should be replacable by jax in future
-    import autograd.numpy as np
-    from autograd import grad, jacobian
+    # import autograd.numpy as np
+    import jax.numpy as np
+    from jax import grad, jacobian
     has_autograd = True
 except ImportError:
     import numpy as np

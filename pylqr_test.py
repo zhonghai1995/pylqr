@@ -4,7 +4,7 @@ A Inverted Pendulum test for the iLQR implementation
 from __future__ import print_function
 
 try:
-    import autograd.numpy as np
+    import jax.numpy as np
 except ImportError:
     import numpy as np
 
