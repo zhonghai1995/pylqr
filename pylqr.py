@@ -1,14 +1,11 @@
 from __future__ import print_function
 
-try:
-    #note autograd should be replacable by jax in future
-    # import autograd.numpy as np
-    import jax.numpy as np
-    from jax import grad, jacobian
-    has_autograd = True
-except ImportError:
-    import numpy as np
-    has_autograd = False
+
+
+import jax.numpy as np
+from jax import grad, jacobian
+has_autograd = True
+
 
 # import numpy as np
 # has_autograd = False
@@ -94,7 +91,9 @@ class PyLQR_iLQRSolver:
         #be of consistent length
         u_array_sup = np.vstack([u_array, np.zeros(len(u_array[0]))])
 
-        J_array = [self.cost(x, u, t, self.aux) for t, (x, u) in enumerate(zip(x_array, u_array_sup))]
+        J_array = np.array([self.cost(x, u, t, self.aux) for t, (x, u) in enumerate(zip(x_array, u_array_sup))])
+
+
 
         return np.sum(J_array)
 
@@ -111,7 +110,7 @@ class PyLQR_iLQRSolver:
         converged = False
         for i in range(n_itrs):
             k_array, K_array = self.back_propagation(x_array, u_array)
-            norm_k = np.mean(np.linalg.norm(k_array, axis=1))
+            norm_k = np.mean(np.linalg.norm(np.array(k_array), axis=1))
             #apply the control to update the trajectory by trying different alpha
             accept = False
             for alpha in self.alpha_array:
@@ -135,7 +134,7 @@ class PyLQR_iLQRSolver:
                         u_array = u_array_new
                         #successful step, decrease the regularization term
                         #momentum like adaptive regularization
-                        self.reg = np.max([self.reg_min, self.reg / self.reg_factor])
+                        self.reg = np.max(np.array([self.reg_min, self.reg / self.reg_factor]))
                         accept = True
                         if verbose:
                             print('Iteration {0}:\tJ = {1};\tnorm_k = {2};\treg = {3}'.format(i+1, J_opt, norm_k, np.log10(self.reg)))
@@ -379,9 +378,11 @@ class PyLQR_iLQRSolver:
         to ensure its positive-definite properties
         """
         u, s, v = np.linalg.svd(mat)
-        s[ s < 0 ] = 0.0        #truncate negative values...
+        #s[ s < 0 ] = 0.0        #truncate negative values...
+        s = s.at[s<0].set(0.0)
         diag_s_inv = np.zeros((v.shape[0], u.shape[1]))
-        diag_s_inv[0:len(s), 0:len(s)] = np.diag(1./(s+reg))
+        #diag_s_inv[0:len(s), 0:len(s)] = np.diag(1./(s+reg))
+        diag_s_inv = diag_s_inv.at[0:len(s), 0:len(s)].set(np.diag(1./(s+reg)))
         return v.dot(diag_s_inv).dot(u.T)
 
     def finite_difference_second_order_(self, func, x):
